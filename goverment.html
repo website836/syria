@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>استجابة - طلب استغاثة طارئ</title>
+
+  <!-- إعدادات PWA وتثبيت التطبيق على الهاتف -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#ff3b30">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="استجابة">
+
+  <!-- Firebase App & Database SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background-color: #121212; color: #ffffff; margin: 0; padding: 16px; display: flex; flex-direction: column; min-height: 100vh; justify-content: space-between; }
+    
+    .top-header { text-align: center; margin-bottom: 15px; }
+    h1 { color: #ff4d4d; font-size: 1.6rem; margin: 0 0 8px 0; }
+    
+    .status-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #1c1c1e;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      border: 1px solid #333;
+    }
+    .status-badge { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; display: inline-block; }
+    .status-badge.offline { background: #ff4d4d; box-shadow: 0 0 8px #ff4d4d; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px; }
+    .btn-emergency {
+      background-color: #1c1c1e;
+      border: 2px solid #2c2c2e;
+      border-radius: 14px;
+      color: #fff;
+      padding: 18px 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .btn-emergency.active {
+      border-color: #ff4d4d;
+      background: #2c1515;
+      box-shadow: 0 0 12px rgba(255, 77, 77, 0.3);
+    }
+    .btn-emergency span { font-size: 2.2rem; }
+
+    .counter-box {
+      background: #1c1c1e;
+      border: 1px solid #2c2c2e;
+      padding: 14px 18px;
+      border-radius: 14px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .counter-controls { display: flex; gap: 14px; align-items: center; }
+    .counter-btn {
+      background: #2c2c2e;
+      color: #fff;
+      border: none;
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      font-size: 1.4rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .counter-btn:active { background: #3a3a3c; }
+
+    .btn-send {
+      background: linear-gradient(135deg, #ff3b30, #d70015);
+      color: #fff;
+      border: none;
+      padding: 18px;
+      font-size: 1.25rem;
+      font-weight: bold;
+      border-radius: 14px;
+      width: 100%;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(255, 59, 48, 0.4);
+      transition: transform 0.1s ease;
+    }
+    .btn-send:active { transform: scale(0.98); }
+    .btn-send:disabled { background: #444; box-shadow: none; cursor: not-allowed; }
+
+    .location-info {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #8e8e93;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <div>
+    <div class="top-header">
+      <h1>استجابة الطوارئ</h1>
+      <div class="status-bar">
+        <span id="network-badge" class="status-badge"></span>
+        <span id="network-text">جاري فحص الاتصال...</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <button class="btn-emergency active" onclick="selectType('محاصر تحت ركام', this)">
+        <span>🏚️</span> محاصر / ركام
+      </button>
+      <button class="btn-emergency" onclick="selectType('إصابة إسعافية حرجة', this)">
+        <span>🚑</span> إصابة حرجة
+      </button>
+      <button class="btn-emergency" onclick="selectType('حريق محاصر', this)">
+        <span>🔥</span> حريق
+      </button>
+      <button class="btn-emergency" onclick="selectType('مبنى متصدع مهدد', this)">
+        <span>⚠️</span> خطر انهيار
+      </button>
+    </div>
+
+    <div class="counter-box">
+      <span>عدد العالقين التقريبي:</span>
+      <div class="counter-controls">
+        <button class="counter-btn" onclick="updateCount(-1)">-</button>
+        <span id="person-count" style="font-size: 1.3rem; font-weight: bold; min-width: 25px; text-align: center;">1</span>
+        <button class="counter-btn" onclick="updateCount(1)">+</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <button class="btn-send" id="send-btn" onclick="handleEmergency()">إرسال نداء استغاثة عاجل</button>
+    <div class="location-info" id="gps-status">جاري التقاط إحداثيات GPS...</div>
+  </div>
+
+  <script>
+    // تسجيل الـ Service Worker ليعمل التطبيق دون إنترنت
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('Service Worker تم تسجيله بنجاح', reg))
+          .catch(err => console.log('فشل تسجيل Service Worker', err));
+      });
+    }
+
+    // إعداد Firebase برابط قاعدة بياناتك
+    const firebaseConfig = {
+      databaseURL: "https://syrai-d4f85-default-rtdb.firebaseio.com/"
+    };
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    const EMERGENCY_SMS_PHONE = "+963900000000"; 
+    let selectedType = "محاصر تحت ركام";
+    let personCount = 1;
+    let userLocation = null;
+
+    function checkOnlineStatus() {
+      const isOnline = navigator.onLine;
+      const badge = document.getElementById('network-badge');
+      const text = document.getElementById('network-text');
+      if (isOnline) {
+        badge.className = "status-badge";
+        text.innerText = "متصل بالإنترنت (إرسال مباشر)";
+      } else {
+        badge.className = "status-badge offline";
+        text.innerText = "دون إنترنت (تحويل فوري لـ SMS)";
+      }
+    }
+    window.addEventListener('online', checkOnlineStatus);
+    window.addEventListener('offline', checkOnlineStatus);
+    checkOnlineStatus();
+
+    function getLocation() {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            userLocation = {
+              lat: Number(pos.coords.latitude.toFixed(6)),
+              lng: Number(pos.coords.longitude.toFixed(6)),
+              acc: Math.round(pos.coords.accuracy)
+            };
+            document.getElementById('gps-status').innerText = `تم تحديد موقعك بدقة (± ${userLocation.acc} متر)`;
+            document.getElementById('gps-status').style.color = "#4caf50";
+          },
+          (err) => {
+            document.getElementById('gps-status').innerText = "تنبيه: GPS غير مفعل (سيتم استخدام موقع تقديري)";
+            document.getElementById('gps-status').style.color = "#ffa500";
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }
+    }
+    getLocation();
+
+    function selectType(type, btn) {
+      selectedType = type;
+      document.querySelectorAll('.btn-emergency').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function updateCount(change) {
+      personCount = Math.max(1, personCount + change);
+      document.getElementById('person-count').innerText = personCount;
+    }
+
+    function handleEmergency() {
+      const sendBtn = document.getElementById('send-btn');
+      sendBtn.disabled = true;
+      sendBtn.innerText = "جاري إرسال النداء...";
+
+      const lat = userLocation ? userLocation.lat : 35.6500;
+      const lng = userLocation ? userLocation.lng : 36.6500;
+
+      const incidentId = "SOS_" + Date.now();
+      const payload = {
+        id: incidentId,
+        type: selectedType,
+        count: personCount,
+        lat: lat,
+        lng: lng,
+        status: "pending",
+        timestamp: Date.now()
+      };
+
+      if (navigator.onLine) {
+        db.ref('incidents/' + incidentId).set(payload)
+          .then(() => {
+            alert("تم إرسال بلاغك بنجاح! غرفة العمليات استلمت موقعك الآن.");
+          })
+          .catch((err) => {
+            console.error(err);
+            alert("تعذر الإرسال عبر الإنترنت، جاري فتح الرسائل النصية SMS...");
+            fallbackSMS(payload);
+          })
+          .finally(() => {
+            sendBtn.disabled = false;
+            sendBtn.innerText = "إرسال نداء استغاثة عاجل";
+          });
+      } else {
+        fallbackSMS(payload);
+        sendBtn.disabled = false;
+        sendBtn.innerText = "إرسال نداء استغاثة عاجل";
+      }
+    }
+
+    function fallbackSMS(payload) {
+      const smsBody = encodeURIComponent(`SOS#${payload.lat},${payload.lng}#${payload.type}#${payload.count}`);
+      window.location.href = `sms:${EMERGENCY_SMS_PHONE}?body=${smsBody}`;
+    }
+  </script>
+</body>
+</html>

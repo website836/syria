@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>استجابة - كابينة الإسعاف</title>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background-color: #0f172a; color: #fff; margin: 0; padding: 16px; min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; }
+    
+    .header { text-align: center; margin-bottom: 20px; }
+    .header h1 { font-size: 1.4rem; color: #38bdf8; margin: 0 0 8px 0; }
+    
+    .team-select-box {
+      background: #1e293b;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #334155;
+      margin-bottom: 20px;
+    }
+    .team-select-box label { font-size: 0.85rem; color: #94a3b8; display: block; margin-bottom: 6px; }
+    select {
+      width: 100%;
+      background: #0f172a;
+      color: #fff;
+      border: 1px solid #475569;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+
+    /* بطاقة المهمة النشطة */
+    .mission-card {
+      background: #1e293b;
+      border: 2px solid #38bdf8;
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 20px;
+      display: none;
+      animation: flashBorder 1.5s infinite;
+    }
+    @keyframes flashBorder {
+      0% { border-color: #38bdf8; box-shadow: 0 0 10px rgba(56, 189, 248, 0.2); }
+      50% { border-color: #ef4444; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+      100% { border-color: #38bdf8; box-shadow: 0 0 10px rgba(56, 189, 248, 0.2); }
+    }
+
+    .mission-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 12px; }
+    .mission-badge { background: #ef4444; color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+    .mission-title { font-size: 1.2rem; font-weight: bold; }
+
+    .mission-body { font-size: 0.95rem; line-height: 1.6; color: #cbd5e1; margin-bottom: 15px; }
+
+    /* أزرار التحكم للسائق */
+    .btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      text-decoration: none;
+    }
+    .btn-nav { background: #2563eb; color: #fff; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+    .btn-nav:active { background: #1d4ed8; }
+    .btn-done { background: #10b981; color: #fff; }
+    .btn-done:active { background: #059669; }
+
+    .idle-box {
+      text-align: center;
+      padding: 40px 20px;
+      background: #1e293b;
+      border-radius: 16px;
+      border: 1px dashed #334155;
+      color: #64748b;
+    }
+    .idle-icon { font-size: 3rem; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+  <div>
+    <div class="header">
+      <h1>منظومة الاستجابة - كابينة الإسعاف</h1>
+      <div style="font-size: 0.85rem; color: #94a3b8;">توجيه وتحرك الفرق الميدانية</div>
+    </div>
+
+    <!-- اختيار الفريق -->
+    <div class="team-select-box">
+      <label>حدد الفريق / السيارة الحالية:</label>
+      <select id="team-selector" onchange="changeTeam()">
+        <option value="إسعاف 1 (معرة النعمان - المشفى)">إسعاف 1 (معرة النعمان - المشفى)</option>
+        <option value="إسعاف 2 (نزلة تلمنس)">إسعاف 2 (نزلة تلمنس)</option>
+        <option value="إسعاف 3 (كفرنبل)">إسعاف 3 (كفرنبل)</option>
+      </select>
+    </div>
+
+    <!-- حالة الاستعداد (عند عدم وجود مهمة) -->
+    <div id="idle-view" class="idle-box">
+      <div class="idle-icon">⏳</div>
+      <h3 style="color:#94a3b8; margin-bottom: 6px;">في وضع الاستعداد</h3>
+      <p style="font-size: 0.85rem;">بانتظار توجيه مهمة جديدة من غرفة العمليات...</p>
+    </div>
+
+    <!-- تفاصيل المهمة (تظهر فور توجيه الفريق) -->
+    <div id="mission-card" class="mission-card">
+      <div class="mission-header">
+        <span class="mission-title" id="m-type">نوع الحادث</span>
+        <span class="mission-badge">مهمة طارئة 🚨</span>
+      </div>
+
+      <div class="mission-body">
+        👥 <b>عدد الأشخاص:</b> <span id="m-count"></span><br>
+        📍 <b>الإحداثيات:</b> <span id="m-coords"></span>
+      </div>
+
+      <a id="gmaps-link" href="#" target="_blank" class="btn btn-nav">
+        🗺️ فتح مسار الملاحة (Google Maps)
+      </a>
+
+      <button class="btn btn-done" onclick="completeMission()">
+        ✓ تم الوصول وإنجاز المهمة
+      </button>
+    </div>
+  </div>
+
+  <div style="text-align:center; font-size: 0.75rem; color:#475569; padding: 10px 0;">
+    متصل بمركز التوجيه والعمليات المباشر
+  </div>
+
+  <script>
+    // تهيئة Firebase
+    const firebaseConfig = {
+      databaseURL: "https://syrai-d4f85-default-rtdb.firebaseio.com/"
+    };
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    let currentTeam = document.getElementById('team-selector').value;
+    let activeIncident = null;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    window.addEventListener('click', initAudio, { once: true });
+
+    function playAlertSound() {
+      try {
+        initAudio();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+      } catch(e) {}
+    }
+
+    function changeTeam() {
+      currentTeam = document.getElementById('team-selector').value;
+      listenToMissions();
+    }
+
+    function listenToMissions() {
+      db.ref('incidents').on('value', (snapshot) => {
+        const data = snapshot.val();
+        activeIncident = null;
+
+        if (data) {
+          // البحث عن بلاغ موجه لهذا الفريق بالذات وحالته نشطة (active)
+          for (let id in data) {
+            const item = data[id];
+            if (item.assignedTeam === currentTeam && item.status === 'active') {
+              activeIncident = item;
+              break;
+            }
+          }
+        }
+
+        renderMission();
+      });
+    }
+
+    function renderMission() {
+      const idleView = document.getElementById('idle-view');
+      const missionCard = document.getElementById('mission-card');
+
+      if (activeIncident) {
+        idleView.style.display = 'none';
+        missionCard.style.display = 'block';
+
+        document.getElementById('m-type').innerText = activeIncident.type;
+        document.getElementById('m-count').innerText = `${activeIncident.count} شخص`;
+        document.getElementById('m-coords').innerText = `${activeIncident.lat}, ${activeIncident.lng}`;
+
+        // رابط ملاحة تلقائي لموقع المصاب
+        const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${activeIncident.lat},${activeIncident.lng}&travelmode=driving`;
+        document.getElementById('gmaps-link').href = navUrl;
+
+        playAlertSound();
+      } else {
+        idleView.style.display = 'block';
+        missionCard.style.display = 'none';
+      }
+    }
+
+    function completeMission() {
+      if (activeIncident && confirm("هل تم إنجاز المهمة والتعامل مع الحالة بنجاح؟")) {
+        db.ref('incidents/' + activeIncident.id).update({
+          status: 'resolved'
+        }).then(() => {
+          alert("تم تسجيل الحالة كمنجزة بنجاح، شكراً لجهودكم!");
+        });
+      }
+    }
+
+    listenToMissions();
+  </script>
+</body>
+</html>
